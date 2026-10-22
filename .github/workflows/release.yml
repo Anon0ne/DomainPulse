@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to create, e.g. v0.1.0-alpha"
+        required: true
+        default: v0.1.0-alpha
 
 permissions:
   contents: write
@@ -55,14 +60,14 @@ jobs:
       - run: >
           pyinstaller --noconfirm --windowed --name DomainPulse
           --icon build/domain-pulse.png --exclude-module tkinter --exclude-module cryptography run.py
-      - run: packaging/build_appimage.sh "${GITHUB_REF_NAME}"
+      - run: packaging/build_appimage.sh "${{ inputs.version || github.ref_name }}"
       - uses: actions/upload-artifact@v4
         with:
           name: linux
           path: dist/*.AppImage
 
   release:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     needs: [windows, linux]
     runs-on: ubuntu-latest
     steps:
@@ -71,8 +76,10 @@ jobs:
           path: artifacts
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           prerelease: true
-          name: Domain Pulse ${{ github.ref_name }}
+          name: Domain Pulse ${{ inputs.version || github.ref_name }}
           files: |
             artifacts/windows/DomainPulse.exe
             artifacts/linux/*.AppImage

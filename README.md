@@ -45,6 +45,6 @@ Tests: `pip install pytest && python -m pytest`
 
 ## Releasing
 
-Push a tag like `v0.1.0-alpha`. GitHub Actions runs the tests, builds the Windows `.exe` and Linux AppImage, and attaches them to a pre-release.
+Push a tag like `v0.1.0-alpha`, or run the **Build and release** workflow from the Actions tab and enter a version. GitHub Actions runs the tests, builds the Windows `.exe` and Linux AppImage, and attaches them to a pre-release.
 
 Data (the domain list and its state) is stored in SQLite in your user app-data folder.
