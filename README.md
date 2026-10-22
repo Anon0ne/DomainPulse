@@ -2,6 +2,8 @@
 
 A small tray app that watches a list of domains and tells you when one becomes **available** or is **about to expire**. Built by [BizHostNC](https://bizhostnc.com).
 
+![Domain Pulse main window](docs/screenshot.png)
+
 ## Features
 
 - Lives in the system tray on Windows and Linux. Closing the window keeps it running; quit from the tray menu.
