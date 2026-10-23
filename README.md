@@ -8,8 +8,9 @@ A small tray app that watches a list of domains and tells you when one becomes *
 
 - Lives in the system tray on Windows and Linux. Closing the window keeps it running; quit from the tray menu.
 - Import domains from a CSV (a `domain` column, or just the first column) or type them in.
-- Export a CSV with status, registrar, expiry date, days left and last checked time.
+- Export a CSV with status, lifecycle stage, registrar, expiry date, days left, expected drop date and last checked time.
 - Desktop notifications when a domain becomes available, and at 30, 7 and 1 days before expiry. Each alert fires once, and the countdown resets when a domain is renewed.
+- Follows expired domains through the registry's deletion stages: **grace period**, **redemption** and **pending delete**, with an alert at each stage and an expected drop date once a domain is pending delete.
 - Color-coded status table with filter and sorting, plus a one-click "Register" link for available domains.
 
 ## How checking works
@@ -20,6 +21,8 @@ Lookups use [RDAP](https://www.icann.org/rdap), the structured successor to WHOI
 | --- | --- |
 | Registered, more than 30 days left | Every 24 hours |
 | Registered, 30 days or less | Every 6 hours |
+| Expired: grace period or redemption | Every 6 hours |
+| Pending delete | Every 2 hours |
 | Available | Every 24 hours |
 | Last check failed | Retried after 1 hour |
 

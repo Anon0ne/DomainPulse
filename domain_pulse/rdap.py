@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +31,8 @@ class LookupResult:
     registrar: str = ""
     expires: datetime | None = None
     error: str = ""
+    flags: list[str] = field(default_factory=list)  # registry status flags, e.g. "redemption period"
+    deletion: datetime | None = None  # scheduled deletion date, when the registry publishes one
 
 
 class RdapClient:
@@ -103,11 +105,18 @@ class RdapClient:
 
 
 def parse_domain(domain: str, data: dict) -> LookupResult:
-    expires = None
+    expires = deletion = None
     for event in data.get("events", []):
-        if event.get("eventAction") == "expiration" and event.get("eventDate"):
-            expires = parse_date(event["eventDate"])
-    return LookupResult(domain, REGISTERED, registrar=_registrar(data), expires=expires)
+        action, date = event.get("eventAction"), event.get("eventDate")
+        if not date:
+            continue
+        if action == "expiration":
+            expires = parse_date(date)
+        elif action == "deletion":
+            deletion = parse_date(date)
+    flags = [str(f).strip().lower() for f in data.get("status", [])]
+    return LookupResult(domain, REGISTERED, registrar=_registrar(data), expires=expires,
+                        flags=flags, deletion=deletion)
 
 
 def _registrar(data: dict) -> str:

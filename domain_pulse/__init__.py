@@ -1,6 +1,6 @@
 """Domain Pulse: tray app that watches domain registration and expiry."""
 
-__version__ = "0.1.1-alpha"
+__version__ = "0.1.2-alpha"
 APP_NAME = "Domain Pulse"
 
 BRAND_NAME = "BizHostNC"
