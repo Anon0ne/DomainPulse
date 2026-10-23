@@ -22,6 +22,8 @@ COL_ACTION = 6
 
 
 def display_status(d: Domain, now: datetime) -> str:
+    if d.status == REGISTERED and d.phase:
+        return monitor.PHASE_LABELS[d.phase]
     if d.status == REGISTERED:
         days = d.days_left(now)
         if days is not None and days < 0:
@@ -84,6 +86,8 @@ class DomainModel(QAbstractTableModel):
             if col == 3:
                 return d.expires.strftime("%Y-%m-%d") if d.expires else "—"
             if col == 4:
+                if d.phase == monitor.PENDING_DELETE and d.drop_date:
+                    return f"drops ~{d.drop_date:%b %d}"
                 return "—" if days is None else str(days)
             if col == 5:
                 return ago(d.last_checked, now)
@@ -96,6 +100,8 @@ class DomainModel(QAbstractTableModel):
         if role == Qt.ForegroundRole:
             if col == 1:
                 return QColor(theme.STATUS_COLORS.get(status, theme.MUTED))
+            if col == 4 and d.phase == monitor.PENDING_DELETE:
+                return QColor(theme.DROP)
             if col == 4 and days is not None and days <= monitor.NEAR_EXPIRY_DAYS:
                 return QColor(theme.WARN if days >= 0 else theme.BAD)
             if col == COL_ACTION:
@@ -107,6 +113,8 @@ class DomainModel(QAbstractTableModel):
             f.setBold(True)
             return f
         if role == Qt.ToolTipRole:
+            if d.phase == monitor.PENDING_DELETE and d.drop_date:
+                return f"Pending delete. Expected to drop around {d.drop_date:%b %d, %Y}."
             if d.error:
                 return f"Last check failed: {d.error}"
             if col == COL_ACTION and d.status == AVAILABLE:
@@ -194,6 +202,7 @@ class MainWindow(QMainWindow):
             "total": StatCard("Watching", theme.TEXT),
             "available": StatCard("Available", theme.GOOD),
             "expiring": StatCard("Expiring ≤30d", theme.WARN),
+            "dropping": StatCard("Pending delete", theme.DROP),
             "error": StatCard("Check errors", theme.BAD),
         }
         for c in self.cards.values():
@@ -358,7 +367,9 @@ class MainWindow(QMainWindow):
         statuses = [display_status(d, now) for d in rows]
         self.cards["total"].value.setText(str(len(rows)))
         self.cards["available"].value.setText(str(statuses.count("available")))
-        self.cards["expiring"].value.setText(str(statuses.count("expiring") + statuses.count("expired")))
+        expiring = ("expiring", "expired", "grace period", "redemption")
+        self.cards["expiring"].value.setText(str(sum(statuses.count(s) for s in expiring)))
+        self.cards["dropping"].value.setText(str(statuses.count("pending delete")))
         self.cards["error"].value.setText(str(sum(1 for d in rows if d.error)))
         self.update_status()
 

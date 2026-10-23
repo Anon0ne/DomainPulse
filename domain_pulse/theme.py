@@ -14,9 +14,11 @@ ACCENT_2 = "#00c8ff"
 GOOD = "#2ee6a6"
 WARN = "#ffb020"
 BAD = "#ff4d6a"
+DROP = "#b67cff"
 
 STATUS_COLORS = {"available": GOOD, "expiring": WARN, "expired": BAD, "error": BAD,
-                 "registered": ACCENT_2, "pending": MUTED, "unknown": MUTED}
+                 "registered": ACCENT_2, "pending": MUTED, "unknown": MUTED,
+                 "grace period": WARN, "redemption": BAD, "pending delete": DROP}
 
 STYLESHEET = f"""
 * {{ font-family: "Segoe UI", "Inter", "Noto Sans", sans-serif; font-size: 13px; color: {TEXT}; }}

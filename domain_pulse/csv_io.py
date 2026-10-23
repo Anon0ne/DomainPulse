@@ -5,10 +5,12 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from .monitor import PHASE_LABELS
 from .rdap import is_valid, normalize
 from .store import Domain, utcnow
 
-EXPORT_FIELDS = ["domain", "status", "registrar", "expires", "days_left", "last_checked", "error"]
+EXPORT_FIELDS = ["domain", "status", "lifecycle", "registrar", "expires", "days_left", "drop_date",
+                 "last_checked", "error"]
 DOMAIN_HEADERS = {"domain", "domains", "domain name", "name", "url", "website"}
 
 
@@ -58,9 +60,10 @@ def write_domains(path: Path | str, domains: list[Domain]) -> None:
         for d in domains:
             days = d.days_left(now)
             w.writerow([
-                d.name, d.status, d.registrar,
+                d.name, d.status, PHASE_LABELS.get(d.phase, ""), d.registrar,
                 d.expires.date().isoformat() if d.expires else "",
                 "" if days is None else days,
+                d.drop_date.date().isoformat() if d.drop_date else "",
                 d.last_checked.strftime("%Y-%m-%d %H:%M UTC") if d.last_checked else "",
                 d.error,
             ])

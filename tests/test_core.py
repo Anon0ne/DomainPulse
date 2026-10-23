@@ -147,3 +147,72 @@ def test_error_keeps_status_and_retries_soon():
     monitor.apply_result(d, LookupResult("x.com", "unknown", error="timeout"), NOW)
     assert d.status == REGISTERED and d.error == "timeout"
     assert d.next_check - NOW == monitor.ERROR_RETRY
+
+
+def test_parse_status_flags_and_deletion_event():
+    data = {**RDAP_SAMPLE, "status": ["Pending Delete", "client hold"],
+            "events": RDAP_SAMPLE["events"] + [{"eventAction": "deletion", "eventDate": "2026-10-30T18:00:00Z"}]}
+    r = parse_domain("example.com", data)
+    assert r.flags == ["pending delete", "client hold"]
+    assert r.deletion == datetime(2026, 10, 30, 18, tzinfo=timezone.utc)
+
+
+def test_lifecycle_phase():
+    assert monitor.lifecycle_phase(["active"]) == ""
+    assert monitor.lifecycle_phase(["auto renew period"]) == monitor.GRACE
+    assert monitor.lifecycle_phase(["pending delete", "redemption period"]) == monitor.REDEMPTION
+    assert monitor.lifecycle_phase(["pending delete"]) == monitor.PENDING_DELETE
+
+
+def test_deletion_lifecycle_alerts_and_drop():
+    d = Domain("x.com")
+    expired = NOW - timedelta(days=40)
+    reg = lambda flags, deletion=None: LookupResult("x.com", REGISTERED, expires=expired, flags=flags, deletion=deletion)
+
+    alerts = monitor.apply_result(d, reg(["redemption period", "pending delete"]), NOW)
+    assert [a.kind for a in alerts] == ["redemption"]           # no "expired N days" alert on top
+    assert monitor.apply_result(d, reg(["redemption period"]), NOW) == []
+
+    alerts = monitor.apply_result(d, reg(["pending delete"]), NOW)
+    assert [a.kind for a in alerts] == ["pending_delete"]
+    assert d.drop_date == NOW + timedelta(days=monitor.PENDING_DELETE_DAYS)
+    assert d.next_check - NOW < timedelta(hours=3)               # watched closely
+
+    later = NOW + timedelta(hours=2)
+    assert monitor.apply_result(d, reg(["pending delete"]), later) == []
+    assert d.drop_date == NOW + timedelta(days=monitor.PENDING_DELETE_DAYS)  # estimate kept
+
+    published = NOW + timedelta(days=3)
+    monitor.apply_result(d, reg(["pending delete"], deletion=published), later)
+    assert d.drop_date == published                               # registry date wins
+
+    alerts = monitor.apply_result(d, LookupResult("x.com", AVAILABLE), later)
+    assert [a.kind for a in alerts] == ["available"]
+    assert d.phase == "" and d.drop_date is None
+
+
+def test_store_migrates_old_database(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute("""CREATE TABLE domains (name TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
+        registrar TEXT NOT NULL DEFAULT '', expires TEXT, last_checked TEXT, next_check TEXT NOT NULL,
+        error TEXT NOT NULL DEFAULT '', alerted_available INTEGER NOT NULL DEFAULT 0,
+        alerted_threshold INTEGER, added TEXT NOT NULL)""")
+    conn.execute("INSERT INTO domains (name, next_check, added) VALUES ('a.com', '2026-01-01', '2026-01-01')")
+    conn.commit()
+    conn.close()
+    s = Store(path)
+    d = s.get("a.com")
+    assert d.phase == ""
+    d.phase, d.drop_date = monitor.PENDING_DELETE, NOW
+    s.save(d)
+    assert Store(path).get("a.com").drop_date == NOW
+
+
+def test_csv_export_lifecycle(tmp_path):
+    out = tmp_path / "out.csv"
+    csv_io.write_domains(out, [Domain("x.com", status=REGISTERED, phase=monitor.PENDING_DELETE, drop_date=NOW)])
+    header, row = out.read_text().splitlines()
+    assert header.split(",")[2] == "lifecycle"
+    assert "pending delete" in row and "2026-10-22" in row

@@ -18,9 +18,19 @@ CREATE TABLE IF NOT EXISTS domains (
     error TEXT NOT NULL DEFAULT '',
     alerted_available INTEGER NOT NULL DEFAULT 0,
     alerted_threshold INTEGER,
-    added TEXT NOT NULL
+    added TEXT NOT NULL,
+    phase TEXT NOT NULL DEFAULT '',
+    drop_date TEXT,
+    alerted_phase TEXT NOT NULL DEFAULT ''
 );
 """
+
+# Columns added after the first alpha; older databases get them on startup.
+MIGRATIONS = {
+    "phase": "ALTER TABLE domains ADD COLUMN phase TEXT NOT NULL DEFAULT ''",
+    "drop_date": "ALTER TABLE domains ADD COLUMN drop_date TEXT",
+    "alerted_phase": "ALTER TABLE domains ADD COLUMN alerted_phase TEXT NOT NULL DEFAULT ''",
+}
 
 
 def utcnow() -> datetime:
@@ -42,6 +52,9 @@ class Domain:
     error: str = ""
     alerted_available: bool = False
     alerted_threshold: int | None = None
+    phase: str = ""  # "", "grace", "redemption" or "pending_delete"
+    drop_date: datetime | None = None
+    alerted_phase: str = ""
 
     def days_left(self, now: datetime | None = None) -> int | None:
         if not self.expires:
@@ -54,6 +67,11 @@ class Store:
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        existing = {r["name"] for r in self.conn.execute("PRAGMA table_info(domains)")}
+        for column, sql in MIGRATIONS.items():
+            if column not in existing:
+                self.conn.execute(sql)
+        self.conn.commit()
 
     def add(self, names: list[str]) -> int:
         now = utcnow().isoformat()
@@ -98,13 +116,15 @@ class Store:
     def save(self, d: Domain) -> None:
         self.conn.execute(
             """UPDATE domains SET status=?, registrar=?, expires=?, last_checked=?, next_check=?,
-               error=?, alerted_available=?, alerted_threshold=? WHERE name=?""",
+               error=?, alerted_available=?, alerted_threshold=?, phase=?, drop_date=?, alerted_phase=?
+               WHERE name=?""",
             (
                 d.status, d.registrar,
                 d.expires.isoformat() if d.expires else None,
                 d.last_checked.isoformat() if d.last_checked else None,
                 (d.next_check or utcnow()).isoformat(),
-                d.error, int(d.alerted_available), d.alerted_threshold, d.name,
+                d.error, int(d.alerted_available), d.alerted_threshold,
+                d.phase, d.drop_date.isoformat() if d.drop_date else None, d.alerted_phase, d.name,
             ),
         )
         self.conn.commit()
@@ -117,4 +137,5 @@ class Store:
             next_check=_dt(r["next_check"]), error=r["error"],
             alerted_available=bool(r["alerted_available"]),
             alerted_threshold=r["alerted_threshold"],
+            phase=r["phase"], drop_date=_dt(r["drop_date"]), alerted_phase=r["alerted_phase"],
         )
